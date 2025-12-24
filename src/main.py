@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 import logging
 from dotenv import load_dotenv
+from src.api.routes.health_check import router as health_check_router
 
 # initialize logging
 logging.basicConfig(level=logging.INFO,
@@ -24,12 +25,14 @@ async def lifespan(app: FastAPI):
     # load ml model initially once
     # instantiate ws connection manager
     logger.info("Application starting...")
-    # main loop
+
     yield
+
     # clean up tasks
     logger.info("Application closing...")
 
 app = FastAPI(lifespan=lifespan)
 
 # register routes
+app.include_router(health_check_router)
 
