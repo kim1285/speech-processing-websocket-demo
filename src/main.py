@@ -3,6 +3,8 @@ from fastapi import APIRouter, FastAPI
 import logging
 from dotenv import load_dotenv
 from src.api.routes.health_check import router as health_check_router
+from src.api.routes.users import router as users_router
+from src.infrastructure.security.pw_hasher import PasswordHasher
 
 # initialize logging
 logging.basicConfig(level=logging.INFO,
@@ -24,6 +26,9 @@ async def lifespan(app: FastAPI):
     # create tables
     # load ml model initially once
     # instantiate ws connection manager
+    pw_hasher = PasswordHasher()
+    app.state.password_hasher = pw_hasher
+
     logger.info("Application starting...")
 
     yield
@@ -35,4 +40,5 @@ app = FastAPI(lifespan=lifespan)
 
 # register routes
 app.include_router(health_check_router)
+app.include_router(users_router)
 

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Whisper Realtime Demo</title>
+</head>
+<body>
+<button onclick="start()">Start</button>
+<pre id="out"></pre>
+
+<script>
+let ws;
+let recorder;
+let fullText = "";
+let sessionId = crypto.randomUUID();  // For reconnection state recovery
+const ENERGY_THRESHOLD = 0.01;  // Client VAD
+
+async function connect() {
+  ws = new WebSocket("ws://localhost:8000/ws/transcribe");  // Update for VM
+  ws.binaryType = "arraybuffer";
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "partial") {
+      document.getElementById("out").textContent = fullText + "… " + msg.text;
+    } else if (msg.type === "final") {
+      fullText += msg.text + " ";
+      document.getElementById("out").textContent = fullText;
+    }
+  };
+
+  ws.onclose = () => {
+    setTimeout(connect, 1000);  // Reconnect logic
+  };
+
+  // Send sessionId on connect (for state recovery, but minimal: server can map if implemented)
+  ws.onopen = () => ws.send(JSON.stringify({sessionId}));
+}
+
+connect();
+
+async function start() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const audioCtx = new AudioContext({ sampleRate: 16000 });
+  const source = audioCtx.createMediaStreamSource(stream);
+  const processor = audioCtx.createScriptProcessor(4096, 1, 1);  // Still use for VAD; MediaRecorder for sending
+
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+
+  processor.onaudioprocess = e => {
+    const input = e.inputBuffer.getChannelData(0);
+    const energy = Math.sqrt(input.reduce((sum, val) => sum + val * val, 0) / input.length);
+    if (energy < ENERGY_THRESHOLD) return;  // Client VAD: skip noise
+
+    const pcm16 = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      pcm16[i] = Math.max(-1, Math.min(1, input[i])) * 32767;
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(pcm16.buffer);
+    }
+  };
+
+  // Fallback: MediaRecorder if needed, but combined with processor for VAD
+}
+</script>
+</body>
+</html>
